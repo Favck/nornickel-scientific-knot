@@ -1,0 +1,118 @@
+{
+  "ontology_name": "mining_metallurgy_research_ontology",
+  "version": "1.1.0",
+  "description": "Строго фиксированная онтологическая схема R&D для горно-металлургической отрасли с поддержкой мультиязычности и числовых диапазонов.",
+  "classes": {
+    "Material": {
+      "description": "Вещества, сырье, полупродукты и отходы (сульфаты, хлориды, никелевые катоды, техногенный гипс, угольные отходы, шлаки, католиты, ПВП, МПГ)",
+      "properties": {
+        "id": { "type": "String", "required": true, "unique": true, "description": "Уникальный нормализованный ID (инвариант)" },
+        "name_ru": { "type": "String", "required": true, "description": "Нормализованное название на русском" },
+        "name_en": { "type": "String", "required": true, "description": "Нормализованное название на английском" },
+        "synonyms": { "type": "Array", "subtype": "String", "required": false, "description": "Все извлеченные синонимы и аббревиатуры на обоих языках (ПВП, МПГ, EW, electrowinning)" }
+      }
+    },
+    "Process": {
+      "description": "Горно-металлургические и химические процессы, методы, технологии (выщелачивание, плавка, флотация, электроэкстракция, обессоливание)",
+      "properties": {
+        "id": { "type": "String", "required": true, "unique": true },
+        "name_ru": { "type": "String", "required": true },
+        "name_en": { "type": "String", "required": true },
+        "synonyms": { "type": "Array", "subtype": "String", "required": false }
+      }
+    },
+    "Equipment": {
+      "description": "Промышленное и лабораторное оборудование, установки, конструкции (ванны электроэкстракции, печи взвешенной плавки, системы очистки газов, диафрагменные ячейки)",
+      "properties": {
+        "id": { "type": "String", "required": true, "unique": true },
+        "name_ru": { "type": "String", "required": true },
+        "name_en": { "type": "String", "required": true }
+      }
+    },
+    "Property": {
+      "description": "Физико-химические характеристики, технологические параметры, концентрации, показатели ТЭО (сухой остаток, скорость потока, температура)",
+      "properties": {
+        "id": { "type": "String", "required": true, "unique": true },
+        "parameter_name": { "type": "String", "required": true, "description": "Название параметра, например: 'концентрация Ca', 'сухой остаток'" },
+        "value_raw": { "type": "String", "required": true, "description": "Исходная строка из текста (например, '200–300', '≤1000', 'оптимальная')" },
+        "operator": { "type": "String", "required": false, "description": "Знак сравнения для поиска, если применимо (=, <=, >=, <, >, range)" },
+        "value_numeric": { "type": "Float", "required": false, "description": "Точное число (если указано конкретное число)" },
+        "value_min": { "type": "Float", "required": false, "description": "Нижняя граница диапазона (например, 200.0)" },
+        "value_max": { "type": "Float", "required": false, "description": "Верхняя граница диапазона или ограничение сверху (например, 300.0 или 1000.0)" },
+        "unit": { "type": "String", "required": false, "description": "Единица измерения (мг/л, мг/дм³, °C, м/с)" }
+      }
+    },
+    "Experiment": {
+      "description": "Протоколы лабораторных и промышленных опытов, экспериментальные данные",
+      "properties": {
+        "id": { "type": "String", "required": true, "unique": true },
+        "protocol_number": { "type": "String", "required": true },
+        "date": { "type": "String", "required": false }
+      }
+    },
+    "Publication": {
+      "description": "Научные публикации и отчеты (литературные обзоры, патенты, диссертации, статьи, внутренние отчеты)",
+      "properties": {
+        "id": { "type": "String", "required": true, "unique": true },
+        "title": { "type": "String", "required": true },
+        "year": { "type": "Integer", "required": false },
+        "geography": { "type": "String", "required": true, "description": "Географический маркер применения/публикации (Россия / Зарубежье)" }
+      }
+    },
+    "Expert": {
+      "description": "Исследовательские команды, авторы, ученые, носители отраслевых компетенций",
+      "properties": {
+        "id": { "type": "String", "required": true, "unique": true },
+        "full_name": { "type": "String", "required": true },
+        "organization": { "type": "String", "required": false }
+      }
+    },
+    "Facility": {
+      "description": "Место проведения или внедрения: лаборатории, обогатительные фабрики, заводы, институты",
+      "properties": {
+        "id": { "type": "String", "required": true, "unique": true },
+        "name_ru": { "type": "String", "required": true },
+        "name_en": { "type": "String", "required": true },
+        "geography": { "type": "String", "required": true, "description": "Локация объекта (Россия / Зарубежье)" }
+      }
+    }
+  },
+  "relationships": [
+    {
+      "type": "uses_material",
+      "source": "Process",
+      "target": "Material",
+      "description": "Технологический процесс использует конкретное вещество или материал в качестве сырья/реагента."
+    },
+    {
+      "type": "operates_at_condition",
+      "source": "Process",
+      "target": "Property",
+      "description": "Процесс (или работа оборудования) протекает при определенных физико-химических условиях и параметрах."
+    },
+    {
+      "type": "produces_output",
+      "source": "Process",
+      "target": "Material",
+      "description": "В результате процесса получается целевой продукт, шлам или техногенный отход."
+    },
+    {
+      "type": "described_in",
+      "source": "Experiment",
+      "target": "Publication",
+      "description": "Протокол опыта, параметры или выводы описаны в конкретной статье, патенте или внутреннем отчете."
+    },
+    {
+      "type": "validated_by",
+      "source": "Property",
+      "target": "Experiment",
+      "description": "Технологический параметр или физико-химический эффект подтвержден результатами конкретного эксперимента."
+    },
+    {
+      "type": "contradicts",
+      "source": "Publication",
+      "target": "Publication",
+      "description": "Научные выводы, полученные показатели или рекомендации в одной публикации прямо противоречат данным другой публикации."
+    }
+  ]
+}
