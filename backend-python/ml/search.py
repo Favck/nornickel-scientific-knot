@@ -1,7 +1,7 @@
 
-from utils import create_property
-from embedder import Embedder
-from ner_extractor import NerPipeline
+from .utils import create_property
+from .embedder import Embedder
+from .ner_extractor import NerPipeline
 
 
 
@@ -36,7 +36,11 @@ class Search(NerPipeline):
         elif "зарубеж" in query_lower or "иностран" in query_lower:
             filters["geo"] = "Зарубежье"
 
+<<<<<<< HEAD:ml/search.py
 
+=======
+        # Бежим по сущностям и собираем числовые фильтры через готовые лейблы
+>>>>>>> develop:backend-python/ml/search.py
         for ent in doc.ents:
 
             if ent.label_ in ["GPE", "LOC"]:
@@ -59,6 +63,10 @@ class Search(NerPipeline):
                         "unit": prop.get("unit")
                     })
 
+<<<<<<< HEAD:ml/search.py
+=======
+        # Очищаем текст от найденных параметров и локаций
+>>>>>>> develop:backend-python/ml/search.py
         clean_text = raw_query
         for word in words_to_remove:
             clean_text = clean_text.replace(word, " ")
@@ -70,7 +78,11 @@ class Search(NerPipeline):
 
         clean_text = " ".join(clean_text.split())
 
+<<<<<<< HEAD:ml/search.py
         
+=======
+
+>>>>>>> develop:backend-python/ml/search.py
         query_vector = self.embedder.text_to_vector(clean_text).tolist()
 
         return {
