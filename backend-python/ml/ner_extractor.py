@@ -1,5 +1,6 @@
 import spacy
 import uuid
+from spacy.tokens import Span
 from spacy.pipeline import EntityRuler
 from .constants import  patterns
 from .utils import detector, find_equipment, find_experts, find_material, find_facilities, find_process, find_publication, create_property, find_all_experiments
@@ -54,7 +55,27 @@ class NerPipeline():
             facilities = []
             
            
-            for ent in sentence.ents:
+            raw_ents = list(sentence.ents)
+            merged_ents = []
+            i = 0
+            
+            while i < len(raw_ents):
+                current_ent = raw_ents[i]
+                if current_ent.label_ == "PER":
+                    while (i + 1 < len(raw_ents) and 
+                           raw_ents[i + 1].label_ == "PER" and 
+                           raw_ents[i + 1].start - current_ent.end <= 1):
+                        next_ent = raw_ents[i + 1]
+                        
+                        current_ent = Span(doc, current_ent.start, next_ent.end, label="PER")
+                        i += 1  
+                merged_ents.append(current_ent)
+                i += 1
+
+
+
+
+            for ent in merged_ents:
                 if ent.label_ in ["VALUE_RANGE", "VALUE_LIMIT", "VALUE_EXACT"]:
                     prop = create_property(ent)  
                     if prop: 
@@ -62,10 +83,11 @@ class NerPipeline():
                         properties.append(prop)
                     
                 elif ent.label_ == "PER":
+                    
                     expert ={
                         "id": str(uuid.uuid4()),
-                        "full_name": ent.text,
-                        "organization": ent.root.head.text if ent.root.head.ent_type_ == "ORG" else None,
+                        "full_name": ent.text.strip(" ()\"'-"),
+                        "organization": ent.root.head.text.strip(" ()\"'-") if ent.root.head.ent_type_ == "ORG" else None,
                         "_token_idx":ent.root.i
                     }
                     experts.append(expert)
@@ -78,7 +100,7 @@ class NerPipeline():
                     
                     facility = {
                         "id": str(uuid.uuid4()), 
-                        "name_ru": ent.text,
+                        "name_ru": ent.text.strip(" ()\"'-"),
                         "geography": geography,
                         "_token_idx": ent.root.i
                     }
@@ -122,7 +144,16 @@ class NerPipeline():
                             "target": closest_fac["id"]
                         })
 
-            for nodes_list in [materials, processes, equipments, properties, experts, facilities]:
+            if processes and experiments:
+                for proc in processes:
+                    closest_exp = min(experiments, key=lambda e: abs(e["_token_idx"] - proc["_token_idx"]))
+                    result["relationships"].append({
+                        "type": "executed_in_experiment",
+                        "source": proc["id"],
+                        "target": closest_exp["id"]
+                    })
+
+            for nodes_list in [materials, processes, equipments, properties, experts, facilities, experiments]:
                 for node in nodes_list:
                     node.pop("_token_idx", None)
 
@@ -132,6 +163,7 @@ class NerPipeline():
             result["nodes"]["Property"].extend(properties)
             result["nodes"]["Expert"].extend(experts)
             result["nodes"]["Facility"].extend(facilities)
+            result["nodes"]["Experiment"].extend(experiments)
 
         return result
 

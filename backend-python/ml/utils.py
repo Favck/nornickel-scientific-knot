@@ -68,8 +68,7 @@ def create_property(ent) -> dict:
         "unit": None
     }
 
-
-
+        
    
     if label == "VALUE_LIMIT":
         data = separation(limit_pattern, text)
@@ -103,22 +102,7 @@ def create_property(ent) -> dict:
             prop_fields["unit"] = data["unit"].strip() # Здесь запишется "%"
 
 
-    parent_token = ent.root.head
-
-    if parent_token.pos_ == "VERB":
-        for child in parent_token.children:
-            if child.dep_ == "nsubj":  # Ищем главное подлежащее предложения
-                parent_token = child
-                break
-
-    parent_name = parent_token.text
-
-    for child in parent_token.children:
-        if child.dep_ == "nmod" and child.pos_ == "NOUN":
-            parent_name += f" {child.text}"
-        
-    prop_fields["parameter_name"] = parent_name
-
+    prop_fields["parameter_name"] = extract_parameter_name(ent)
     
 
     return prop_fields
@@ -155,7 +139,7 @@ def find_material(sentence,language: str = "ru") -> list[dict]:
 
 
 
-def find_process(sentence, language: str = "ru") -> dict:
+def find_process(sentence, language: str = "ru") -> list:
     all_process = []
     for token in sentence:
         lemma = token.lemma_.lower()
@@ -273,7 +257,7 @@ def find_all_experiments(sentence) -> list:
     text = sentence.text
     
 
-    protocol_pattern = r'(?i)(?:протокол|опыт|эксперимент)\s*(?:№\s*|номер\s*)?([A-Za-z0-9А-Яа-я\-№\/_]+)'
+    protocol_pattern = r'(?i)\b(?:протокол|опыт|эксперимент)[а-я]{0,3}\s*(?:(?:№|номер)\s*([A-Za-z0-9А-Яа-я\-/_]+]*)|\s+((?![а-яё]+о\b)[A-Za-z0-9А-Яа-я\-/_]*\d[A-Za-z0-9А-Яа-я\-/_]*))'
     
 
     date_pattern = r'\b(\d{2}[./-]\d{2}[./-]\d{2,4}|\d{4}[./-]\d{2}[./-]\d{2})\b'
@@ -301,3 +285,90 @@ def find_all_experiments(sentence) -> list:
         })
         
     return found_experiments
+
+
+
+def extract_parameter_name(ent) -> str:
+    """
+    Умное извлечение физического параметра для численного значения.
+    Использует комбинацию синтаксического анализа и левого контекстного окна.
+    """
+    # 1. Список "пустых" структурных слов, которые не могут быть параметрами
+    structural_words = {
+        "уровень", "значение", "величина", "предел", "количество", 
+        "содержание", "концентрация", "диапазон", "норма", "показатель"
+    }
+    
+    # Глаголы-мусорщики, которые часто прилипают как параметры
+    bad_verbs = {"превышать", "составлять", "равняться", "находиться", "быть", "равен", "равна"}
+
+    param_token = None
+    curr = ent.root.head  # Родительский токен для нашего числа
+
+    # --- ШАГ 1: ТРАВЕРСА СИНТАКСИЧЕСКОГО ДЕРЕВА ---
+    # Если над числом стоит глагол или краткое прилагательное (составил, равен, превышает)
+    if curr.pos_ in ["VERB", "AUX", "ADJ"]:
+        for child in curr.children:
+            if child.dep_ in ["nsubj", "nsubj:pass"] and child.pos_ == "NOUN":
+                param_token = child
+                break
+
+    # Если над числом стоит предлог или структурное существительное ("на уровне 500 мг")
+    if curr.pos_ == "NOUN" and curr.lemma_.lower() in structural_words:
+        # Поднимаемся на шаг выше к глаголу, который управляет этим "уровнем"
+        verb = curr.head
+        if verb.pos_ in ["VERB", "AUX", "ADJ"]:
+            for child in verb.children:
+                if child.dep_ in ["nsubj", "nsubj:pass"] and child.pos_ == "NOUN":
+                    param_token = child
+                    break
+
+    # --- ШАГ 2: БУЛЛЕТПРУФ ФОЛБЕК (СКОЛЬЗЯЩЕЕ ОКНО СЛЕВА) ---
+    # Если синтаксис ничего не нашел ИЛИ нашел "пустое" слово из structural_words
+    if not param_token or param_token.lemma_.lower() in {"уровень", "предел", "значение"}:
+        context_tokens = []
+        start_idx = ent.start
+        
+        # Шагаем влево от начала числа (максимум на 5 токенов назад)
+        for j in range(start_idx - 1, max(-1, start_idx - 6), -1):
+            t = ent.doc[j]
+            
+            # Границы остановки: знаки препинания или союзы, разбивающие смысл
+            if t.is_punct or t.pos_ in ["CCONJ", "SCONJ"]:
+                break
+                
+            # Собираем только смысловые части речи (существительные, прилагательные, предлоги)
+            if t.pos_ in ["NOUN", "ADJ", "ADP"]:
+                context_tokens.insert(0, t)
+            elif t.pos_ in ["VERB"] and context_tokens:
+                # Если уперлись в глагол, но до этого уже что-то собрали — стоп
+                break
+
+        if context_tokens:
+            # Очищаем собранный контекст от глаголов-мусорщиков и предлогов на краях
+            words = [
+                t.text for t in context_tokens 
+                if t.lemma_.lower() not in bad_verbs and t.pos_ != "ADP"
+            ]
+            if words:
+                return " ".join(words).strip()
+
+    # --- ШАГ 3: СБОР СИНТАКСИЧЕСКОЙ ГРУППЫ (Если Шаг 1 сработал успешно) ---
+    if param_token:
+        tokens_to_collect = [param_token]
+        # Забираем зависимые прилагательные (amod: "остаточная" концентрация) 
+        # и зависимые существительные (nmod: концентрация "меди")
+        for child in param_token.children:
+            if child.dep_ in ["amod", "nmod"] and child.pos_ in ["ADJ", "NOUN"]:
+                tokens_to_collect.append(child)
+                # Уходим на один уровень глубже для цепочек (концентрация меди "в растворе")
+                for sub_child in child.children:
+                    if sub_child.dep_ == "nmod" and sub_child.pos_ == "NOUN":
+                        tokens_to_collect.append(sub_child)
+        
+        # Сортируем токены по их реальному индексу в тексте, чтобы не ломать порядок слов
+        tokens_to_collect.sort(key=lambda t: t.i)
+        return " ".join([t.text for t in tokens_to_collect]).strip()
+
+    # Крайний фолбек, если текст совсем аномальный
+    return "Параметр"
