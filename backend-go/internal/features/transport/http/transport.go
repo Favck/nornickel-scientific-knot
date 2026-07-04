@@ -17,6 +17,11 @@ type Service interface {
 		ctx context.Context,
 		payload domain.GraphPayload,
 	) error
+	GetSubgraph(
+		ctx context.Context,
+		queryVector []float32,
+		filters domain.SearchFilters,
+	) (domain.PyvisGraph, error)
 }
 
 func NewHTTPHandler(
@@ -33,6 +38,11 @@ func (h *HTTPHandler) Routes() []core_http_server.Route {
 			Method:  http.MethodPost,
 			Path:    "/entities",
 			Handler: h.CreateEntities,
+		},
+		{
+			Method:  http.MethodPost,
+			Path:    "/search",
+			Handler: h.GetSubgraph,
 		},
 	}
 }

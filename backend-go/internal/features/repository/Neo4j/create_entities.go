@@ -38,6 +38,7 @@ func (r *Repository) CreateEntities(
 				"year":            e.Year,
 				"protocol_number": e.ProtocolNumber,
 				"date":            e.Date,
+				"embedding":       e.Embedding,
 			})
 		}
 
@@ -53,7 +54,7 @@ func (r *Repository) CreateEntities(
 
 		query := `
 			UNWIND $entities AS e
-			CALL apoc.merge.node([e.label], {id: e.id}, {
+			WITH e, {
 				name_ru: e.name_ru,
 				name_en: e.name_en,
 				synonyms: e.synonyms,
@@ -70,8 +71,10 @@ func (r *Repository) CreateEntities(
 				title: e.title,
 				year: e.year,
 				protocol_number: e.protocol_number,
-				date: e.date
-			}, {}) YIELD node AS entity
+				date: e.date,
+				embedding: e.embedding
+			} AS props
+			CALL apoc.merge.node([e.label], {id: e.id}, props, props) YIELD node AS entity
 			
 			WITH count(entity) as c
 			
