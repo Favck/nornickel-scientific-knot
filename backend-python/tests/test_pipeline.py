@@ -9,36 +9,6 @@ from pipeline import Pipeline
 class TestPipeline:
     """Тестирование всего пайплайна."""
 
-    @patch("pipeline.NerPipeline")
-    def test_adapt_ml_to_backend(self, MockNerPipeline):
-        """Проверяет корректность работы адаптера форматов."""
-        pipeline = Pipeline()
-
-        ml_data = {
-            "nodes": {
-                "Material": [{"id": "1", "name": "Файнштейн"}],
-                "Process": [{"id": "2", "name": "Выщелачивание"}]
-            },
-            "relationships": [
-                {"source": "2", "target": "1", "type": "uses_material"}
-            ]
-        }
-
-        nodes, edges = pipeline._adapt_ml_to_backend(ml_data)
-
-        # Проверяем узлы
-        assert len(nodes) == 2
-        assert any(n["id"] == "1" and n["type"] == "Material" for n in nodes)
-        assert any(n["id"] == "2" and n["type"] == "Process" for n in nodes)
-
-        # Проверяем связи
-        assert len(edges) == 1
-        assert edges[0]["source"] == "2"
-        assert edges[0]["target"] == "1"
-        assert edges[0]["relation_type"] == "uses_material"
-        assert edges[0]["is_contradictory"] is False
-
-
     @patch("builtins.open", new_callable=mock_open, read_data="{}")
     @patch("pipeline.json.dump")
     @patch("pipeline.NerPipeline")

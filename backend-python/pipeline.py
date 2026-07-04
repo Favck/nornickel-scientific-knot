@@ -137,28 +137,6 @@ class Pipeline:
         self.ner_pipeline = NerPipeline()
         logger.success("ML-модели успешно загружены!")
 
-    def _adapt_ml_to_backend(self, ml_data: dict) -> tuple:
-        """Адаптер: конвертирует формат ML-модуля в формат Go-бэкенда."""
-        backend_nodes = []
-        backend_edges = []
-
-        for node_type, nodes_list in ml_data.get("nodes", {}).items():
-            for node in nodes_list:
-                node["type"] = node_type
-                backend_nodes.append(node)
-
-        # Переименовываем ключи в связях
-        for rel in ml_data.get("relationships", []):
-            edge = {
-                "source": rel.get("source"),
-                "target": rel.get("target"),
-                "relation_type": rel.get("type", "unknown"),
-                "is_contradictory": False
-            }
-            backend_edges.append(edge)
-
-        return backend_nodes, backend_edges
-
     def process_file(self, filepath: str, filename: str) -> bool:
         """Обрабатывает один файл от парсинга до отправки."""
         logger.info(f"Запуск обработки файла: {filename}")
@@ -178,8 +156,12 @@ class Pipeline:
         logger.info("Запуск ML-экстракции...")
         try:
             raw_ml_data = self.ner_pipeline.ner_extractor(parsed_data["text"])
-            nodes, edges = self._adapt_ml_to_backend(raw_ml_data)
-            logger.info(f"ML извлек: {len(nodes)} узлов и {len(edges)} связей.")
+            
+            # Отправляем данные от ML
+            nodes = raw_ml_data.get("nodes", {})
+            edges = raw_ml_data.get("relationships", [])
+            
+            logger.info(f"ML извлек данные")
             
             # 3. Сохранение в очередь на отправку
             pending_filename = os.path.splitext(filename)[0] + ".json"

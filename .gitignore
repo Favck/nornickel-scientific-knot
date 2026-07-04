@@ -1,3 +1,52 @@
+# Environments
 .env
 venv/
-.env.example
+env/
+.venv/
+__pypackages__/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+pytest.xml
+
+# Go
+bin/
+pkg/
+vendor/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# IDEs and OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Project specific (nornickel-scientific-knot)
+backend-python/inbound/*
+!backend-python/inbound/.gitkeep
+backend-python/done/*
+!backend-python/done/.gitkeep
+backend-python/pending_send/*
+!backend-python/pending_send/.gitkeep
+backend-python/done_json/*
+!backend-python/done_json/.gitkeep
+
+backend-python/processed_files.json
+backend-python/pipeline_errors.log
+backend-python/debug_last_extraction.json
+*.log
