@@ -1,7 +1,7 @@
 import re
 import uuid
 from spacy.pipeline import EntityRuler
-from constants import MODEL, patterns, dictionary
+from .constants import MODEL, patterns, dictionary
 
 
 

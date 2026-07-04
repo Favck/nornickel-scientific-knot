@@ -1,8 +1,8 @@
 import spacy
 import uuid
 from spacy.pipeline import EntityRuler
-from constants import  patterns
-from utils import detector, find_equipment, find_experts, find_material, find_facilities, find_process, find_publication, create_property
+from .constants import  patterns
+from .utils import detector, find_equipment, find_experts, find_material, find_facilities, find_process, find_publication, create_property
 
 
 
@@ -56,6 +56,7 @@ class NerPipeline():
 
             # Числа, люди и заводы из ents
             for ent in sentence.ents:
+                prop = None
                 if ent.label_ in ["VALUE_RANGE", "VALUE_LIMIT", "VALUE_EXACT"]:
                     prop = create_property(ent) # Твоя функция
                     if prop: result["nodes"]["Property"].append(prop)
@@ -70,20 +71,11 @@ class NerPipeline():
                         "id": str(uuid.uuid4()), "name_ru": ent.text
                     })
 
-
                 if proc and prop: 
                     result["relationships"].append({
                         "type": "operates_at_condition",
                         "source": proc["id"],
                         "target": prop["id"]
-                    })
-
-                
-                if proc and mat:
-                    result["relationships"].append({
-                        "type": "uses_material",
-                        "source": proc["id"],
-                        "target": mat["id"]
                     })
                 
                 if pub and prop:
@@ -93,14 +85,19 @@ class NerPipeline():
                         "target": pub["id"]
                     })
 
+            if proc and mat:
+                result["relationships"].append({
+                    "type": "uses_material",
+                    "source": proc["id"],
+                    "target": mat["id"]
+                })
+
 
         return result
 
 
-
-
-
-text = """
+if __name__ == "__main__":
+    text = """
 Интенсификация процесса хлорного растворения медно-никелевых файнштейнов в современных условиях.
 В 2024 году на базе научно-исследовательского центра ООО Институт Гипроникель (Россия) были проведены полупромышленные испытания новой технологии переработки сырья. Ведущий исследователь Четверкин Николай Васильевич предложил модифицировать классическое хлорное выщелачивание. 
 В качестве исходного сырья использовался высокосортный медно-никелевый файнштейн, поставляемый с площадки Кольская ГМК. Реакция протекала в агрессивной среде, для чего применялся специализированный титановый автоклав. 
@@ -108,6 +105,6 @@ text = """
 В результате процесса формируется обогащенный анодный шлам, а эффективность извлечения цветных металлов равна 98 %.
 """
 
-pipe = NerPipeline()
-print(pipe.ner_extractor(text))
+    pipe = NerPipeline()
+    print(pipe.ner_extractor(text))
 

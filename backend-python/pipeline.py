@@ -4,13 +4,17 @@ import json
 import shutil
 import hashlib
 import requests
+from ml.ner_extractor import NerPipeline
 from loguru import logger
 from parser.docx_parser import DocxParser
+
 
 
 GO_BACKEND_URL = "http://localhost:8080/api/v1/entities"
 INBOUND_DIR = "inbound"
 DONE_DIR = "done"
+PENDING_DIR = "pending_send"
+DONE_JSON_DIR = "done_json"
 REGISTRY_FILE = "processed_files.json"
 SCAN_INTERVAL_SEC = 10
 
@@ -119,6 +123,8 @@ class Pipeline:
         """Инит пайплайна."""
         os.makedirs(INBOUND_DIR, exist_ok=True)
         os.makedirs(DONE_DIR, exist_ok=True)
+        os.makedirs(PENDING_DIR, exist_ok=True)
+        os.makedirs(DONE_JSON_DIR, exist_ok=True)
 
         self.registry = FileRegistry(REGISTRY_FILE)
         self.client = GoBackendClient(GO_BACKEND_URL)
@@ -126,18 +132,32 @@ class Pipeline:
         # Инициализируем парсеры
         self.docx_parser = DocxParser()
 
-    def simulate_ml_extraction(self, text: str) -> tuple:
-        """Симуляция работы ML-модуля."""
-        nodes = [
-            {"id": "node_1", "type": "Process", "name": "Очистка сточных вод"},
-            {"id": "node_2", "type": "Parameter", "name": "сульфаты",
-                "value_limit": "<=200", "unit": "мг/л"},
-        ]
-        edges = [
-            {"source": "node_1", "target": "node_2",
-                "relation_type": "limits", "is_contradictory": False},
-        ]
-        return nodes, edges
+        # Инициализируем ML модель
+        logger.info("Загрузка ML-моделей...")
+        self.ner_pipeline = NerPipeline()
+        logger.success("ML-модели успешно загружены!")
+
+    def _adapt_ml_to_backend(self, ml_data: dict) -> tuple:
+        """Адаптер: конвертирует формат ML-модуля в формат Go-бэкенда."""
+        backend_nodes = []
+        backend_edges = []
+
+        for node_type, nodes_list in ml_data.get("nodes", {}).items():
+            for node in nodes_list:
+                node["type"] = node_type
+                backend_nodes.append(node)
+
+        # Переименовываем ключи в связях
+        for rel in ml_data.get("relationships", []):
+            edge = {
+                "source": rel.get("source"),
+                "target": rel.get("target"),
+                "relation_type": rel.get("type", "unknown"),
+                "is_contradictory": False
+            }
+            backend_edges.append(edge)
+
+        return backend_nodes, backend_edges
 
     def process_file(self, filepath: str, filename: str) -> bool:
         """Обрабатывает один файл от парсинга до отправки."""
@@ -155,11 +175,61 @@ class Pipeline:
             return False
 
         # 2. ML-извлечение
-        nodes, edges = self.simulate_ml_extraction(parsed_data["text"])
+        logger.info("Запуск ML-экстракции...")
+        try:
+            raw_ml_data = self.ner_pipeline.ner_extractor(parsed_data["text"])
+            nodes, edges = self._adapt_ml_to_backend(raw_ml_data)
+            logger.info(f"ML извлек: {len(nodes)} узлов и {len(edges)} связей.")
+            
+            # 3. Сохранение в очередь на отправку
+            pending_filename = os.path.splitext(filename)[0] + ".json"
+            pending_filepath = os.path.join(PENDING_DIR, pending_filename)
+            
+            payload = {
+                "metadata": parsed_data.get("metadata", {}),
+                "nodes": nodes,
+                "edges": edges
+            }
+            with open(pending_filepath, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=4, ensure_ascii=False)
+            logger.info(f"Результат сохранен в очередь: {pending_filename}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Ошибка в ML-модуле при обработке {filename}: {e}")
+            return False
 
-        # 3. Отправка на Go-бэкенд
-        metadata = parsed_data["metadata"]
-        return self.client.send_data(metadata, nodes, edges)
+    def process_pending(self):
+        """Пытается отправить сохраненные результаты из очереди на Go бэкенд."""
+        if not os.path.exists(PENDING_DIR):
+            return
+            
+        for filename in os.listdir(PENDING_DIR):
+            if not filename.endswith(".json"):
+                continue
+            filepath = os.path.join(PENDING_DIR, filename)
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                
+                logger.info(
+                    f"Попытка отправки данных из {filename} на бэкенд...")
+                is_success = self.client.send_data(
+                    data.get("metadata", {}), 
+                    data.get("nodes", []), 
+                    data.get("edges", [])
+                )
+                
+                if is_success:
+                    shutil.move(filepath, os.path.join(DONE_JSON_DIR, filename))
+                    logger.info(
+                        f"Файл {filename} успешно отправлен и "
+                        f"перемещен в '{DONE_JSON_DIR}/'"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Ошибка при обработке {filename} из очереди отправки: {e}")
 
     def run(self):
         """Бесконечный цикл сканирования."""
@@ -170,6 +240,9 @@ class Pipeline:
 
         while True:
             try:
+                # Сначала пробуем отправить то, что в очереди
+                self.process_pending()
+                
                 for filename in os.listdir(INBOUND_DIR):
                     filepath = os.path.join(INBOUND_DIR, filename)
 
