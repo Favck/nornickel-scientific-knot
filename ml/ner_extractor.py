@@ -57,7 +57,7 @@ class NerPipeline():
             # Числа, люди и заводы из ents
             for ent in sentence.ents:
                 if ent.label_ in ["VALUE_RANGE", "VALUE_LIMIT", "VALUE_EXACT"]:
-                    prop = create_property(ent) # Твоя функция
+                    prop = create_property(ent) 
                     if prop: result["nodes"]["Property"].append(prop)
                     
                 elif ent.label_ == "PER":
@@ -86,12 +86,12 @@ class NerPipeline():
                         "target": mat["id"]
                     })
                 
-                if pub and prop:
-                    result["relationships"].append({
-                        "type": "described_in",
-                        "source": prop["id"], 
-                        "target": pub["id"]
-                    })
+                # if pub and prop:
+                #     result["relationships"].append({
+                #         "type": "described_in",
+                #         "source": prop["id"], 
+                #         "target": pub["id"]
+                #     })
     
 
         return result
