@@ -1,7 +1,7 @@
 
-from utils import create_property
-from embedder import Embedder
-from ner_extractor import NerPipeline
+from .utils import create_property
+from .embedder import Embedder
+from .ner_extractor import NerPipeline
 
 
 
@@ -37,7 +37,7 @@ class Search(NerPipeline):
         elif "зарубеж" in query_lower or "иностран" in query_lower:
             filters["geo"] = "Зарубежье"
 
-        # 2. Бежим по сущностям и собираем числовые фильтры через готовые лейблы
+        # Бежим по сущностям и собираем числовые фильтры через готовые лейблы
         for ent in doc.ents:
             # Вырезаем гео-сущности из базовой модели, чтобы они не шумели в эмбеддинге
             if ent.label_ in ["GPE", "LOC"]:
@@ -60,19 +60,19 @@ class Search(NerPipeline):
                         "unit": prop.get("unit")
                     })
 
-        # 3. Очищаем текст от найденных параметров и локаций
+        # Очищаем текст от найденных параметров и локаций
         clean_text = raw_query
         for word in words_to_remove:
             clean_text = clean_text.replace(word, " ")
         
-        # Вычищаем мусорные знаки, которые могли остаться висеть в воздухе
+
         for op in ["<=", ">=", "<", ">", "=", "–", "-"]:
             clean_text = clean_text.replace(op, " ")
             
-        # Убираем двойные пробелы
+
         clean_text = " ".join(clean_text.split())
 
-        # 4. Генерируем вектор только из смысловой части (например, "хлорное выщелачивание файнштейн")
+
         query_vector = self.embedder.text_to_vector(clean_text).tolist()
 
         return {
