@@ -54,4 +54,6 @@ backend-python/debug_last_extraction.json
 *.log
 
 Information_sources/
-
+backend-python/inbound_pdfs/*
+!backend-python/inbound_pdfs/.gitkeep
+backend-go/out/

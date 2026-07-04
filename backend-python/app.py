@@ -18,8 +18,8 @@ st.set_page_config(
 
 class GoSearchClient:
     """Клиент для взаимодействия с Go-бэкендом."""
-    
-    def __init__(self, base_url: str = "http://localhost:8080"):
+
+    def __init__(self, base_url: str = "http://localhost:5050"):
         self.base_url = base_url
         self.search_endpoint = f"{self.base_url}/api/v1/search"
 
@@ -27,7 +27,8 @@ class GoSearchClient:
         """Отправляет POST-запрос с вектором и фильтрами на бэкенд."""
         try:
             logger.info(f"Отправка запроса на {self.search_endpoint}...")
-            response = requests.post(self.search_endpoint, json=payload, timeout=10)
+            response = requests.post(
+                self.search_endpoint, json=payload, timeout=10)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -37,7 +38,7 @@ class GoSearchClient:
 
 class GraphVisualizer:
     """Класс для отрисовки интерактивных графов с помощью Pyvis."""
-    
+
     COLORS = {
         "Process": "#4EA8DE",
         "Material": "#56CFE1",
@@ -48,29 +49,29 @@ class GraphVisualizer:
     def render_mock() -> str:
         """Генерирует фейковый граф для демонстрации интерфейса."""
         net = Network(
-            height="600px", 
-            width="100%", 
+            height="600px",
+            width="100%",
             bgcolor="#0E1117",
             font_color="white",
             directed=True
         )
-        
+
         net.add_node(
-            1, label="Выщелачивание", color=GraphVisualizer.COLORS["Process"], 
+            1, label="Выщелачивание", color=GraphVisualizer.COLORS["Process"],
             title="Процесс: Выщелачивание\nСтатус: Изучено"
         )
         net.add_node(
-            2, label="Файнштейн", color=GraphVisualizer.COLORS["Material"], 
+            2, label="Файнштейн", color=GraphVisualizer.COLORS["Material"],
             title="Материал: Файнштейн"
         )
         net.add_node(
-            3, label="ОВП", color=GraphVisualizer.COLORS["Property"], 
+            3, label="ОВП", color=GraphVisualizer.COLORS["Property"],
             title="Параметр: ОВП\nДиапазон: 200-300 мг/л"
         )
-        
+
         net.add_edge(1, 2)
         net.add_edge(1, 3)
-        
+
         tmp_path = os.path.join(tempfile.gettempdir(), "mock_graph.html")
         net.save_graph(tmp_path)
         return tmp_path
@@ -79,47 +80,51 @@ class GraphVisualizer:
     def render_real_graph(backend_data: dict) -> str:
         """Генерирует граф на основе реальных данных от Go-бэкенда."""
         net = Network(
-            height="600px", 
-            width="100%", 
+            height="600px",
+            width="100%",
             bgcolor="#0E1117",
             font_color="white",
             directed=True
         )
-        
+
         nodes = backend_data.get("nodes", [])
         edges = backend_data.get("edges", [])
-        
+
         for node in nodes:
             node_id = node.get("id")
             node_label = node.get("label", "Unknown")
-            node_type = node.get("group", node.get("type", "Process")) 
-            
+            node_type = node.get("group", node.get("type", "Process"))
+
             color = GraphVisualizer.COLORS.get(node_type, "#999999")
-            
+
             # Формируем тултип из всех свойств
             props = node.get("properties", {})
+            valid_props = {k: v for k, v in props.items() if v not in [0, "", [], None]}
             title_lines = [f"{node_type}: {node_label}"]
-            for k, v in props.items():
+            for k, v in valid_props.items():
+                if isinstance(v, list):
+                    v = ", ".join(map(str, v))
                 title_lines.append(f"{k}: {v}")
             title = "\n".join(title_lines)
-            
+
             net.add_node(
                 node_id,
                 label=node_label,
                 color=color,
                 title=title
             )
-            
+
         for edge in edges:
-            source = edge.get("source")
-            target = edge.get("target")
-            rel_type = edge.get("type", "")
-            
+            source = edge.get("from", edge.get("source"))
+            target = edge.get("to", edge.get("target"))
+            rel_type = edge.get("label", edge.get("type", ""))
+
             color = "#ff4d4d" if rel_type == "contradicts" else "#97c2fc"
             dashes = True if rel_type == "contradicts" else False
-            
-            net.add_edge(source, target, label=rel_type, color=color, dashes=dashes)
-            
+
+            net.add_edge(source, target, label=rel_type,
+                         color=color, dashes=dashes)
+
         tmp_path = os.path.join(tempfile.gettempdir(), "real_graph.html")
         net.save_graph(tmp_path)
         return tmp_path
@@ -149,76 +154,142 @@ class StreamlitApp:
     def _fetch_search_data(self, query: str) -> dict:
         """Обрабатывает поисковый запрос и дергает ML + бэкенд."""
         logger.info(f"Получен поисковый запрос: {query}")
-        
+
         with st.spinner("Извлечение фильтров и построение вектора (ML)..."):
             search_result = self.search_engine.process_query(query)
-            
+
         st.session_state["ml_debug"] = {
             "clean_query_text": search_result.get("clean_query_text"),
             "filters": search_result.get("filters"),
             "query_vector_length": len(search_result.get("query_vector", [])),
             "query_vector_preview": search_result.get("query_vector", [])[:5]
         }
-        
+
         with st.spinner("Поиск связей в графе..."):
             api_response = self.api_client.search(search_result)
-            
+
         return api_response
 
-    def _generate_markdown_report(self, nodes: list) -> str:
+    def _generate_markdown_report(self, nodes: list, edges: list) -> str:
         """Генерирует Markdown отчет по узлам графа."""
-        report = "# Отчет по результатам поиска\n\n"
-        for node in nodes:
-            label = node.get("label", "Unknown")
-            ntype = node.get("group", node.get("type", "Process"))
-            props = node.get("properties", {})
+        report = "# 📑 Расширенный аналитический отчет R&D\n\n"
+        report += "> Данный отчет сгенерирован на основе семантического графа знаний. Здесь отображены связи и параметры найденных процессов и материалов.\n\n"
+        
+        from collections import defaultdict
+        grouped = defaultdict(list)
+        for n in nodes:
+            grouped[n.get("group", n.get("type", "Unknown"))].append(n)
             
-            report += f"## {label} ({ntype})\n"
-            for k, v in props.items():
-                report += f"- **{k}**: {v}\n"
-            report += "\n"
+        for g_name, g_nodes in grouped.items():
+            report += f"## 🔹 {g_name} (Всего: {len(g_nodes)})\n\n"
+            for node in g_nodes:
+                label = node.get("label", "Unknown")
+                props = node.get("properties", {})
+                report += f"### 📌 {label}\n"
+                
+                has_details = False
+                if props:
+                    for k, v in props.items():
+                        report += f"- **{k}**: {v}\n"
+                    has_details = True
+                
+                node_edges = [e for e in edges if e.get('from', e.get('source')) == node['id'] or e.get('to', e.get('target')) == node['id']]
+                if node_edges:
+                    report += "- **Связи в графе:**\n"
+                    for e in node_edges:
+                        is_source = e.get('from', e.get('source')) == node['id']
+                        other_id = e.get('to', e.get('target')) if is_source else e.get('from', e.get('source'))
+                        other_node = next((n for n in nodes if n['id'] == other_id), None)
+                        other_label = other_node['label'] if other_node else other_id
+                        direction = "➡️" if is_source else "⬅️"
+                        rel_label = e.get('label', e.get('type', 'связан с'))
+                        report += f"  - {direction} *{rel_label}* **{other_label}**\n"
+                    has_details = True
+                
+                if not has_details:
+                    report += "- *Дополнительные параметры не указаны*\n"
+                report += "\n"
         return report
 
     def _render_sidebar(self):
         """Отрисовывает боковую панель."""
         st.sidebar.title("📥 Загрузка статей")
         uploaded_file = st.sidebar.file_uploader(
-            "Загрузить научную статью", 
+            "Загрузить научную статью",
             type=["docx", "pdf"],
             help="Файл будет отправлен в фоновый ETL-пайплайн (inbound/)"
         )
-        
+
         if uploaded_file is not None:
             os.makedirs("inbound", exist_ok=True)
             file_path = os.path.join("inbound", uploaded_file.name)
             with open(file_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
-            st.sidebar.success(f"Файл {uploaded_file.name} сохранен и передан в очередь!")
+            st.sidebar.success(
+                f"Файл {uploaded_file.name} сохранен и передан в очередь!")
 
         st.sidebar.divider()
         st.sidebar.title("🔍 Детали узла")
-        
+
         api_response = st.session_state.get("api_response")
         selected_label = st.session_state.get("node_selectbox_key")
-        
+
         if api_response and selected_label:
             nodes = api_response.get("nodes", [])
-            node = next((n for n in nodes if f"{n.get('label')} ({n.get('group', n.get('type', 'Unknown'))})" == selected_label), None)
-            
+            node = next(
+                (n for n in nodes if f"{n.get('label')} ({n.get('group', n.get('type', 'Unknown'))})" == selected_label), None)
+
             if node:
                 st.sidebar.subheader(f"{node.get('label')}")
-                st.sidebar.caption(f"Тип: {node.get('group', node.get('type', 'Unknown'))}")
-                
+                st.sidebar.caption(
+                    f"Тип: {node.get('group', node.get('type', 'Unknown'))}")
+
                 props = node.get("properties", {})
-                if props:
-                    for k, v in props.items():
-                        st.sidebar.markdown(f"**{k}:** {v}")
+                valid_props = {k: v for k, v in props.items() if v not in [0, "", [], None]}
+                
+                PROP_TRANSLATIONS = {
+                    "name_ru": "Название",
+                    "name_en": "Название (EN)",
+                    "synonyms": "Синонимы",
+                    "year": "Год публикации",
+                    "title": "Название статьи",
+                    "geography": "География",
+                    "value_numeric": "Значение",
+                    "unit": "Ед. изм.",
+                    "operator": "Оператор",
+                    "parameter_name": "Параметр",
+                    "value_raw": "Исходное значение",
+                    "full_name": "ФИО Эксперта",
+                    "organization": "Организация",
+                    "protocol_number": "Номер протокола",
+                    "date": "Дата",
+                    "source_title": "Взято из статьи"
+                }
+
+                if valid_props:
+                    for k, v in valid_props.items():
+                        pretty_k = PROP_TRANSLATIONS.get(k, k)
+                        if isinstance(v, list):
+                            v = ", ".join(map(str, v))
+                        st.sidebar.markdown(f"**{pretty_k}:** {v}")
                 else:
                     st.sidebar.markdown("*Нет дополнительных свойств*")
+
+                if node.get("group", node.get("type")) == "Publication":
+                    st.sidebar.divider()
+                    st.sidebar.download_button(
+                        label="📥 Скачать оригинальный источник",
+                        data=b"Hackathon mock PDF content. To link to real PDF, S3 is needed.",
+                        file_name="original_document.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
             else:
-                st.sidebar.markdown("Здесь будет отображаться подробная информация по выбранному узлу.")
+                st.sidebar.markdown(
+                    "Здесь будет отображаться подробная информация по выбранному узлу.")
         else:
-            st.sidebar.markdown("Здесь будет отображаться подробная информация по выбранному узлу.")
+            st.sidebar.markdown(
+                "Здесь будет отображаться подробная информация по выбранному узлу.")
 
     def _render_header(self):
         """Отрисовывает шапку приложения."""
@@ -227,51 +298,58 @@ class StreamlitApp:
 
     def _render_results_from_state(self):
         """Отрисовывает результаты (граф и детали) из стейта."""
-        st.info(f"**Текущий запрос:** {st.session_state.get('search_query', '')}")
-        
+        st.info(
+            f"**Текущий запрос:** {st.session_state.get('search_query', '')}")
+
         api_response = st.session_state.get("api_response")
-        
+
         if api_response:
             st.success("Граф успешно загружен!")
             graph_path = GraphVisualizer.render_real_graph(api_response)
         else:
-            st.error("Не удалось получить данные от бэкенда. Показываем тестовый граф.")
+            st.error(
+                "Не удалось получить данные от бэкенда. Показываем тестовый граф.")
             # Делаем фейковый ответ, чтобы селектбокс не падал
             api_response = {
                 "nodes": [
-                    {"id": 1, "label": "Выщелачивание", "group": "Process", "properties": {"Статус": "Изучено"}},
-                    {"id": 2, "label": "Файнштейн", "group": "Material", "properties": {}},
-                    {"id": 3, "label": "ОВП", "group": "Property", "properties": {"Диапазон": "200-300 мг/л"}},
+                    {"id": 1, "label": "Выщелачивание", "group": "Process",
+                        "properties": {"Статус": "Изучено"}},
+                    {"id": 2, "label": "Файнштейн",
+                        "group": "Material", "properties": {}},
+                    {"id": 3, "label": "ОВП", "group": "Property",
+                        "properties": {"Диапазон": "200-300 мг/л"}},
                 ],
                 "edges": []
             }
             st.session_state["api_response"] = api_response
             graph_path = GraphVisualizer.render_mock()
-            
+
         with st.expander("Посмотреть результат работы ML (Отладка)"):
             st.json(st.session_state.get("ml_debug", {}))
-            
+
         # Рендер графа
         GraphVisualizer.display_html(graph_path)
-        
+
         # Интерактивность под графом
         st.divider()
         st.markdown("### Анализ результатов")
-        
+
         nodes = api_response.get("nodes", [])
-        options = [""] + [f"{n.get('label')} ({n.get('group', n.get('type', 'Unknown'))})" for n in nodes]
-        
+        options = [
+            ""] + [f"{n.get('label')} ({n.get('group', n.get('type', 'Unknown'))})" for n in nodes]
+
         col_select, col_export = st.columns([3, 1])
         with col_select:
             st.selectbox(
-                "Выберите узел для просмотра деталей в панели слева:", 
-                options, 
+                "Выберите узел для просмотра деталей в панели слева:",
+                options,
                 key="node_selectbox_key"
             )
-            
+
         with col_export:
-            st.write("") # Отступ
-            md_report = self._generate_markdown_report(nodes)
+            st.write("")  # Отступ
+            edges = api_response.get("edges", [])
+            md_report = self._generate_markdown_report(nodes, edges)
             st.download_button(
                 label="📥 Скачать Markdown отчет",
                 data=md_report,
@@ -279,13 +357,17 @@ class StreamlitApp:
                 mime="text/markdown",
                 use_container_width=True
             )
+            
+        st.markdown("---")
+        with st.expander("📄 Развернуть подробный текстовый отчет", expanded=True):
+            st.markdown(md_report)
 
     def run(self):
         """Точка входа для запуска отрисовки всего приложения."""
         self._render_header()
 
         search_query = st.text_input(
-            "Введите запрос (например: 'Очистка сточных вод сульфаты <250 мг/л')", 
+            "Введите запрос (например: 'Очистка сточных вод сульфаты <250 мг/л')",
             placeholder="Искать..."
         )
 
@@ -298,7 +380,8 @@ class StreamlitApp:
         # Если нажата кнопка поиска — обрабатываем запрос и кладем результат в стейт
         if search_button and search_query:
             st.session_state["search_query"] = search_query
-            st.session_state["api_response"] = self._fetch_search_data(search_query)
+            st.session_state["api_response"] = self._fetch_search_data(
+                search_query)
 
         # Рендерим сайдбар
         self._render_sidebar()

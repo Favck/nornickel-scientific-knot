@@ -20,7 +20,7 @@ from parser.rar_parser import RarParser
 
 
 
-GO_BACKEND_URL = "http://localhost:8080/api/v1/entities"
+GO_BACKEND_URL = "http://localhost:5050/api/v1/entities"
 INBOUND_DIR = "inbound"
 DONE_DIR = "done"
 PENDING_DIR = "pending_send"
@@ -97,15 +97,10 @@ class GoBackendClient:
         Возвращает True, если сервер ответил 201 Created.
         """
         payload = {
-            "source_metadata": {
-                "file_name": metadata.get("file_name", "unknown"),
-                "year": metadata.get("year", 2024),
-                "geography": metadata.get("geography", "Norilsk"),
-            },
-            "extracted_data": {
-                "nodes": nodes,
-                "edges": edges,
-            },
+            "ontology_name": "Nornickel",
+            "version": "1.0",
+            "nodes": nodes,
+            "edges": edges,
         }
 
         try:

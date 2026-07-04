@@ -129,7 +129,7 @@ def find_material(sentence,language: str = "ru") -> list[dict]:
             "_token_idx": token.i
             }
 
-            if dictionary["Material"][language][lemma]["synonyms"]:
+            if dictionary["Material"][language][lemma].get("synonyms"):
                 new_material["synonyms"] = dictionary["Material"][language][lemma]["synonyms"]
             else:
                 new_material["synonyms"] = None
@@ -152,7 +152,7 @@ def find_process(sentence, language: str = "ru") -> list:
                 "_token_idx": token.i
             }
 
-            if dictionary["Process"][language][lemma]["synonyms"]:
+            if dictionary["Process"][language][lemma].get("synonyms"):
                 new_process["synonyms"] = dictionary["Process"][language][lemma]["synonyms"]
             else:
                 new_process["synonyms"] = None

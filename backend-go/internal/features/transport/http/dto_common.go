@@ -112,9 +112,10 @@ type PyvisGraphDTO struct {
 }
 
 type PyvisNodeDTO struct {
-	ID    string `json:"id"`
-	Label string `json:"label"`
-	Group string `json:"group"`
+	ID         string         `json:"id"`
+	Label      string         `json:"label"`
+	Group      string         `json:"group"`
+	Properties map[string]any `json:"properties,omitempty"`
 }
 
 type PyvisEdgeDTO struct {
@@ -125,9 +126,10 @@ type PyvisEdgeDTO struct {
 
 func DomainToPyvisNodeDTO(d domain.PyvisNode) PyvisNodeDTO {
 	return PyvisNodeDTO{
-		ID:    d.ID,
-		Label: d.Label,
-		Group: d.Group,
+		ID:         d.ID,
+		Label:      d.Label,
+		Group:      d.Group,
+		Properties: d.Properties,
 	}
 }
 

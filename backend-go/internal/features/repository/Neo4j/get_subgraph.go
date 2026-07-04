@@ -25,20 +25,32 @@ func (r *Repository) GetSubgraph(
 				 REDUCE(s = 0.0, i IN range(0, size(n.embedding)-1) | s + n.embedding[i] * n.embedding[i]) AS norm_n,
 				 REDUCE(s = 0.0, i IN range(0, size($query_vector)-1) | s + $query_vector[i] * $query_vector[i]) AS norm_q
 			WITH n, CASE WHEN norm_n > 0 AND norm_q > 0 THEN dot / (sqrt(norm_n) * sqrt(norm_q)) ELSE 0 END AS score
-			ORDER BY score DESC
+			ORDER BY score DESC, COUNT { (n)--() } DESC
 			LIMIT 1
 
-			MATCH path = (n)-[*1..2]-(m)
+			OPTIONAL MATCH path = (n)-[*1..4]-(m)
 
-			UNWIND nodes(path) AS node
-			UNWIND relationships(path) AS rel
+			WITH n, collect(path) AS paths
 			
-			RETURN collect(DISTINCT node) AS nodes, 
-			       collect(DISTINCT {
-			           from: startNode(rel).id, 
-			           to: endNode(rel).id, 
-			           label: type(rel)
-			       }) AS edges
+			WITH n, paths, [p IN paths WHERE p IS NOT NULL | nodes(p)] AS nestedNodes
+			WITH n, paths, REDUCE(acc = [n], nodes IN nestedNodes | acc + nodes) AS allNodes
+			
+			UNWIND allNodes AS node
+			WITH DISTINCT node, paths
+			
+			WITH collect(node) AS nodes, paths
+			
+			WITH nodes, [p IN paths WHERE p IS NOT NULL | relationships(p)] AS nestedRels
+			WITH nodes, REDUCE(acc = [], rels IN nestedRels | acc + rels) AS allRels
+			
+			UNWIND (CASE WHEN size(allRels) = 0 THEN [null] ELSE allRels END) AS rel
+			
+			RETURN nodes, 
+			       [r IN collect(DISTINCT rel) WHERE r IS NOT NULL | {
+			           from: startNode(r).id, 
+			           to: endNode(r).id, 
+			           label: type(r)
+			       }] AS edges
 		`
 
 		params := map[string]any{
@@ -76,6 +88,17 @@ func (r *Repository) GetSubgraph(
 				props := dbNode.Props
 				id, _ := props["id"].(string)
 				
+				// Remove embedding and other internal fields from properties to avoid cluttering UI
+				filteredProps := make(map[string]any)
+				for k, v := range props {
+					if k != "embedding" && k != "id" && k != "label" && v != nil && v != "" {
+						if arr, ok := v.([]any); ok && len(arr) == 0 {
+							continue // skip empty arrays
+						}
+						filteredProps[k] = v
+					}
+				}
+				
 				label := id
 				if nameRu, ok := props["name_ru"].(string); ok && nameRu != "" {
 					label = nameRu
@@ -91,7 +114,7 @@ func (r *Repository) GetSubgraph(
 					ID:         id,
 					Label:      label,
 					Group:      group,
-					Properties: props,
+					Properties: filteredProps,
 				})
 			}
 		}

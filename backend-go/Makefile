@@ -4,6 +4,6 @@ export
 export PROJECT_ROOT=${shell pwd}
 
 app-run:
-	@export LOGGER_FOLDER=${PROJECT_ROOT}/out/logs && \
+	@export LOGGER_FOLDER="./out/logs" && \
 	go mod tidy && \
-	go run ${PROJECT_ROOT}/cmd/main.go
+	go run ./cmd/main.go

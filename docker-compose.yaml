@@ -24,7 +24,7 @@ services:
       neo4j:
         condition: service_healthy 
     volumes:
-      - ${PROJECT_ROOT}/migrations:/migrations 
+      - ./migrations:/migrations
     environment:
       - NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}
     command: >
