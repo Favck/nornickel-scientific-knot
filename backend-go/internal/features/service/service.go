@@ -15,6 +15,11 @@ type Repository interface {
 		ctx context.Context,
 		payload domain.GraphPayload,
 	) error
+	GetSubgraph(
+		ctx context.Context,
+		queryVector []float32,
+		filters domain.SearchFilters,
+	) (domain.PyvisGraph, error)
 }
 
 func NewService(

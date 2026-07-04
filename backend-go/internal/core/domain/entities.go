@@ -18,6 +18,7 @@ type Entity struct {
 	NameRu         string
 	NameEn         string
 	Synonyms       []string
+	Embedding      []float32
 	ParameterName  string
 	ValueRaw       string
 	Operator       string
@@ -42,4 +43,34 @@ func NewGraphPayload(
 		Entities:  entities,
 		Relations: relations,
 	}
+}
+
+type SearchFilters struct {
+	Geo     string
+	Numeric []NumericFilter
+}
+
+type NumericFilter struct {
+	RawEntity    string
+	Operator     string
+	ValueNumeric float64
+	Unit         string
+}
+
+type PyvisGraph struct {
+	Nodes []PyvisNode
+	Edges []PyvisEdge
+}
+
+type PyvisNode struct {
+	ID         string
+	Label      string
+	Group      string
+	Properties map[string]any
+}
+
+type PyvisEdge struct {
+	From  string
+	To    string
+	Label string
 }
