@@ -2,6 +2,7 @@
 
 import os
 import pytest
+import numpy as np
 from unittest.mock import patch, MagicMock, mock_open
 from pipeline import Pipeline
 
@@ -11,10 +12,13 @@ class TestPipeline:
 
     @patch("builtins.open", new_callable=mock_open, read_data="{}")
     @patch("pipeline.json.dump")
+    @patch("pipeline.Embedder")
     @patch("pipeline.NerPipeline")
     @patch("pipeline.DocxParser")
     def test_process_file_success(
-            self, MockParser, MockNerPipeline, mock_json_dump, mock_open):
+            self, MockParser, MockNerPipeline, 
+            MockEmbedder, mock_json_dump, mock_open
+        ):
         """Проверяет сценарий: парсинг -> ML -> сохранение в очередь."""
         pipeline = Pipeline()
 
@@ -29,6 +33,9 @@ class TestPipeline:
             "nodes": {"Material": [{"id": "1", "name": "Файнштейн"}]},
             "relationships": []
         }
+        
+        # 3. Настраиваем мок Эмбеддера
+        pipeline.embedder.text_to_vector.return_value = np.array([0.1, 0.2, 0.3])
 
         result = pipeline.process_file("inbound/test.docx", "test.docx")
 
@@ -47,9 +54,10 @@ class TestPipeline:
     @patch("builtins.open", new_callable=mock_open, read_data="{}")
     @patch("pipeline.json.load")
     @patch("pipeline.GoBackendClient")
+    @patch("pipeline.Embedder")
     @patch("pipeline.NerPipeline")
     def test_process_pending_success(
-            self, MockNerPipeline, MockClient, mock_json_load, mock_open,
+            self, MockNerPipeline, MockEmbedder, MockClient, mock_json_load, mock_open,
             mock_exists, mock_listdir, mock_move):
         """Проверяет отправку данных из очереди."""
         pipeline = Pipeline()
@@ -70,8 +78,9 @@ class TestPipeline:
             os.path.join("done_json", "test.json")
         )
 
+    @patch("pipeline.Embedder")
     @patch("pipeline.NerPipeline")
-    def test_process_file_unsupported_format(self, MockNerPipeline):
+    def test_process_file_unsupported_format(self, MockNerPipeline, MockEmbedder):
         """Проверяет, что система не пытается парсить PDF."""
         pipeline = Pipeline()
         result = pipeline.process_file("inbound/test.pdf", "test.pdf")
@@ -81,9 +90,10 @@ class TestPipeline:
     @patch("pipeline.shutil.move")
     @patch("pipeline.os.listdir")
     @patch("pipeline.os.path.isfile", return_value=True)
+    @patch("pipeline.Embedder")
     @patch("pipeline.NerPipeline")
     def test_run_moves_file_on_success(
-            self, MockNerPipeline, mock_isfile,
+            self, MockNerPipeline, MockEmbedder, mock_isfile,
             mock_listdir, mock_move, mock_sleep):
         """Проверяет главный цикл при успешной обработке файла."""
 

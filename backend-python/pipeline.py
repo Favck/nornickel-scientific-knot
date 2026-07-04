@@ -5,6 +5,7 @@ import shutil
 import hashlib
 import requests
 from ml.ner_extractor import NerPipeline
+from ml.embedder import Embedder
 from loguru import logger
 from parser.docx_parser import DocxParser
 
@@ -132,9 +133,10 @@ class Pipeline:
         # Инициализируем парсеры
         self.docx_parser = DocxParser()
 
-        # Инициализируем ML модель
+        # Инициализируем ML модели
         logger.info("Загрузка ML-моделей...")
         self.ner_pipeline = NerPipeline()
+        self.embedder = Embedder()
         logger.success("ML-модели успешно загружены!")
 
     def process_file(self, filepath: str, filename: str) -> bool:
@@ -161,7 +163,22 @@ class Pipeline:
             nodes = raw_ml_data.get("nodes", {})
             edges = raw_ml_data.get("relationships", [])
             
-            logger.info(f"ML извлек данные")
+            # Обогащаем узлы векторами (эмбеддингами)
+            for node_type, node_list in nodes.items():
+                for node in node_list:
+                    text_to_embed = (
+                        node.get("name_ru") or 
+                        node.get("name") or 
+                        node.get("parameter_name") or 
+                        node.get("parameter") or 
+                        node.get("title") or 
+                        node.get("full_name")
+                    )
+                    if text_to_embed:
+                        node["embedding"] = self.embedder.text_to_vector(
+                            str(text_to_embed)).tolist()
+
+            logger.info("ML извлек данные и векторы построены")
             
             # 3. Сохранение в очередь на отправку
             pending_filename = os.path.splitext(filename)[0] + ".json"

@@ -1,7 +1,7 @@
 
-from utils import create_property
-from embedder import Embedder
-from ner_extractor import NerPipeline
+from .utils import create_property
+from .embedder import Embedder
+from .ner_extractor import NerPipeline
 
 
 
