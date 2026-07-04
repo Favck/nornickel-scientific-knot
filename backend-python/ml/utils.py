@@ -120,7 +120,7 @@ def find_material(sentence,language: str = "ru") -> list[dict]:
     all_material = []
     for token in sentence:
         lemma = token.lemma_.lower()
-        if lemma in dictionary[language]:
+        if lemma in dictionary["Material"][language]:
             new_material = {
                 "id": str(uuid.uuid4()),
             "name_ru" : lemma if language == "ru" else None,
@@ -129,8 +129,8 @@ def find_material(sentence,language: str = "ru") -> list[dict]:
             "_token_idx": token.i
             }
 
-            if dictionary[language][lemma]["synonyms"]:
-                new_material["synonyms"] = dictionary[language][lemma]["synonyms"]
+            if dictionary["Material"][language][lemma]["synonyms"]:
+                new_material["synonyms"] = dictionary["Material"][language][lemma]["synonyms"]
             else:
                 new_material["synonyms"] = None
             all_material.append(new_material)
@@ -143,7 +143,7 @@ def find_process(sentence, language: str = "ru") -> list:
     all_process = []
     for token in sentence:
         lemma = token.lemma_.lower()
-        if lemma in dictionary[language]:
+        if lemma in dictionary["Process"][language]:
             new_process = {
                 "id": str(uuid.uuid4()),
                 "name_ru": lemma if language == "ru" else None,
@@ -152,8 +152,8 @@ def find_process(sentence, language: str = "ru") -> list:
                 "_token_idx": token.i
             }
 
-            if dictionary[language][lemma]["synonyms"]:
-                new_process["synonyms"] = dictionary[language][lemma]["synonyms"]
+            if dictionary["Process"][language][lemma]["synonyms"]:
+                new_process["synonyms"] = dictionary["Process"][language][lemma]["synonyms"]
             else:
                 new_process["synonyms"] = None
                 
@@ -168,7 +168,7 @@ def find_equipment(sentence, language: str = "ru") -> dict:
     all_equipment = []
     for token in sentence:
         lemma = token.lemma_.lower()
-        if lemma in dictionary[language]:
+        if lemma in dictionary["Equipment"][language]:
             new_equipment = {
                 "id": str(uuid.uuid4()),
                 "name_ru": lemma if language == "ru" else None,
