@@ -305,17 +305,16 @@ def extract_parameter_name(ent) -> str:
     param_token = None
     curr = ent.root.head  # Родительский токен для нашего числа
 
-    # --- ШАГ 1: ТРАВЕРСА СИНТАКСИЧЕСКОГО ДЕРЕВА ---
-    # Если над числом стоит глагол или краткое прилагательное (составил, равен, превышает)
+
     if curr.pos_ in ["VERB", "AUX", "ADJ"]:
         for child in curr.children:
             if child.dep_ in ["nsubj", "nsubj:pass"] and child.pos_ == "NOUN":
                 param_token = child
                 break
 
-    # Если над числом стоит предлог или структурное существительное ("на уровне 500 мг")
+
     if curr.pos_ == "NOUN" and curr.lemma_.lower() in structural_words:
-        # Поднимаемся на шаг выше к глаголу, который управляет этим "уровнем"
+
         verb = curr.head
         if verb.pos_ in ["VERB", "AUX", "ADJ"]:
             for child in verb.children:
@@ -323,17 +322,16 @@ def extract_parameter_name(ent) -> str:
                     param_token = child
                     break
 
-    # --- ШАГ 2: БУЛЛЕТПРУФ ФОЛБЕК (СКОЛЬЗЯЩЕЕ ОКНО СЛЕВА) ---
-    # Если синтаксис ничего не нашел ИЛИ нашел "пустое" слово из structural_words
+
     if not param_token or param_token.lemma_.lower() in {"уровень", "предел", "значение"}:
         context_tokens = []
         start_idx = ent.start
         
-        # Шагаем влево от начала числа (максимум на 5 токенов назад)
+
         for j in range(start_idx - 1, max(-1, start_idx - 6), -1):
             t = ent.doc[j]
             
-            # Границы остановки: знаки препинания или союзы, разбивающие смысл
+
             if t.is_punct or t.pos_ in ["CCONJ", "SCONJ"]:
                 break
                 
@@ -353,11 +351,10 @@ def extract_parameter_name(ent) -> str:
             if words:
                 return " ".join(words).strip()
 
-    # --- ШАГ 3: СБОР СИНТАКСИЧЕСКОЙ ГРУППЫ (Если Шаг 1 сработал успешно) ---
+
     if param_token:
         tokens_to_collect = [param_token]
-        # Забираем зависимые прилагательные (amod: "остаточная" концентрация) 
-        # и зависимые существительные (nmod: концентрация "меди")
+
         for child in param_token.children:
             if child.dep_ in ["amod", "nmod"] and child.pos_ in ["ADJ", "NOUN"]:
                 tokens_to_collect.append(child)
@@ -370,5 +367,5 @@ def extract_parameter_name(ent) -> str:
         tokens_to_collect.sort(key=lambda t: t.i)
         return " ".join([t.text for t in tokens_to_collect]).strip()
 
-    # Крайний фолбек, если текст совсем аномальный
+
     return "Параметр"
