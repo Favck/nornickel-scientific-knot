@@ -8,6 +8,15 @@ from ml.ner_extractor import NerPipeline
 from ml.embedder import Embedder
 from loguru import logger
 from parser.docx_parser import DocxParser
+from parser.pymupdf_parser import PyMuPDFParser
+from parser.txt_parser import TxtParser
+from parser.xlsx_parser import XlsxParser
+from parser.pptx_parser import PptxParser
+from parser.docm_parser import DocmParser
+from parser.odt_parser import OdtParser
+from parser.doc_parser import DocParser
+from parser.ppt_parser import PptParser
+from parser.rar_parser import RarParser
 
 
 
@@ -132,6 +141,15 @@ class Pipeline:
 
         # Инициализируем парсеры
         self.docx_parser = DocxParser()
+        self.pdf_parser = PyMuPDFParser()
+        self.txt_parser = TxtParser()
+        self.xlsx_parser = XlsxParser()
+        self.pptx_parser = PptxParser()
+        self.docm_parser = DocmParser()
+        self.odt_parser = OdtParser()
+        self.doc_parser = DocParser()
+        self.ppt_parser = PptParser()
+        self.rar_parser = RarParser()
 
         # Инициализируем ML модели
         logger.info("Загрузка ML-моделей...")
@@ -144,8 +162,27 @@ class Pipeline:
         logger.info(f"Запуск обработки файла: {filename}")
 
         # 1. Парсинг
-        if filename.endswith(".docx"):
+        filename_lower = filename.lower()
+        if filename_lower.endswith(".docx"):
             parsed_data = self.docx_parser.parse(filepath)
+        elif filename_lower.endswith(".pdf"):
+            parsed_data = self.pdf_parser.parse(filepath)
+        elif filename_lower.endswith(".txt"):
+            parsed_data = self.txt_parser.parse(filepath)
+        elif filename_lower.endswith(".xlsx"):
+            parsed_data = self.xlsx_parser.parse(filepath)
+        elif filename_lower.endswith(".pptx"):
+            parsed_data = self.pptx_parser.parse(filepath)
+        elif filename_lower.endswith(".docm"):
+            parsed_data = self.docm_parser.parse(filepath)
+        elif filename_lower.endswith(".odt"):
+            parsed_data = self.odt_parser.parse(filepath)
+        elif filename_lower.endswith(".doc"):
+            parsed_data = self.doc_parser.parse(filepath)
+        elif filename_lower.endswith(".ppt"):
+            parsed_data = self.ppt_parser.parse(filepath)
+        elif filename_lower.endswith(".rar"):
+            parsed_data = self.rar_parser.parse(filepath)
         else:
             logger.warning(f"Парсер для файла {filename} еще не реализован.")
             return False

@@ -13,6 +13,10 @@ class NerPipeline():
     def __init__(self):
         self.nlp_ru = spacy.load("ru_core_news_md")
         self.nlp_en = spacy.load("en_core_web_md")
+        
+        # Увеличиваем лимит токенов для больших PDF-документов
+        self.nlp_ru.max_length = 5_000_000
+        self.nlp_en.max_length = 5_000_000
 
         self.ruler_en = self.nlp_en.add_pipe("entity_ruler", before="ner")
         self.ruler_en.add_patterns(patterns["en"])

@@ -184,7 +184,7 @@ class StreamlitApp:
         st.sidebar.title("📥 Загрузка статей")
         uploaded_file = st.sidebar.file_uploader(
             "Загрузить научную статью", 
-            type=["docx"],
+            type=["docx", "pdf"],
             help="Файл будет отправлен в фоновый ETL-пайплайн (inbound/)"
         )
         

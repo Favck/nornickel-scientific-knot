@@ -50,3 +50,5 @@ backend-python/processed_files.json
 backend-python/pipeline_errors.log
 backend-python/debug_last_extraction.json
 *.log
+
+Information_sources/

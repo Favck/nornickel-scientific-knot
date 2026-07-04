@@ -1,6 +1,9 @@
-# parser/docx_parser.py
-
 import docx
+from docx.oxml.table import CT_Tbl
+from docx.oxml.text.paragraph import CT_P
+from docx.table import Table
+from docx.text.paragraph import Paragraph
+
 from loguru import logger
 from typing import Dict, Any
 from .base import BaseParser
@@ -9,6 +12,7 @@ from .base import BaseParser
 class DocxParser(BaseParser):
     """
     Парсер для файлов .docx на базе библиотеки python-docx.
+    Читает документ последовательно, сохраняя хронологию текста и таблиц.
     """
 
     def parse(self, file_path: str) -> Dict[str, Any]:
@@ -19,22 +23,33 @@ class DocxParser(BaseParser):
         try:
             doc = docx.Document(file_path)
 
-            # Извлекаем параграфы
-            for para in doc.paragraphs:
-                text = para.text.strip()
-                if text:
-                    extracted_text_blocks.append(text)
-
-            # Извлекаем текст из таблиц
-            for table in doc.tables:
-                for row in table.rows:
-                    # проходимся по ячейкам таблицы
-                    row_data = [
-                        cell.text.strip() for cell in row.cells
-                        if cell.text.strip()
-                    ]
-                    if row_data:
-                        extracted_text_blocks.append(" | ".join(row_data))
+            # Итерируемся по внутреннему XML-дереву, чтобы читать параграфы и таблицы в их реальном порядке
+            for child in doc.element.body.iterchildren():
+                if isinstance(child, CT_P):
+                    para = Paragraph(child, doc)
+                    text = para.text.strip()
+                    if text:
+                        # Проверяем, является ли параграф элементом списка
+                        is_list = False
+                        if para.style and para.style.name and para.style.name.startswith('List'):
+                            is_list = True
+                        elif child.xpath('./w:pPr/w:numPr'):
+                            is_list = True
+                            
+                        if is_list and not text.startswith("-"):
+                            text = f"- {text}"
+                            
+                        extracted_text_blocks.append(text)
+                        
+                elif isinstance(child, CT_Tbl):
+                    table = Table(child, doc)
+                    for row in table.rows:
+                        row_data = [
+                            cell.text.strip() for cell in row.cells
+                            if cell.text.strip()
+                        ]
+                        if row_data:
+                            extracted_text_blocks.append(" | ".join(row_data))
 
             full_text = "\n".join(extracted_text_blocks)
             metadata["status"] = "success"
