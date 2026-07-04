@@ -20,6 +20,8 @@ def detector(text: str, subsample: int = 10000) -> str:
             en_latters += 1
     
     total = ru_latters + en_latters
+    if total==0:
+        return "ru"
 
     if ru_latters/total*100 > 0.2:
         return "ru"
@@ -66,8 +68,7 @@ def create_property(ent) -> dict:
         "unit": None
     }
 
-
-
+        
    
     if label == "VALUE_LIMIT":
         data = separation(limit_pattern, text)
@@ -101,33 +102,22 @@ def create_property(ent) -> dict:
             prop_fields["unit"] = data["unit"].strip() # Здесь запишется "%"
 
 
-    parent_token = ent.root.head
-
-    if parent_token.pos_ == "VERB":
-        for child in parent_token.children:
-            if child.dep_ == "nsubj":  # Ищем главное подлежащее предложения
-                parent_token = child
-                break
-
-    parent_name = parent_token.text
-
-    for child in parent_token.children:
-        if child.dep_ == "nmod" and child.pos_ == "NOUN":
-            parent_name += f" {child.text}"
-        
-    prop_fields["parameter_name"] = parent_name
-
+    prop_fields["parameter_name"] = extract_parameter_name(ent)
     
 
     return prop_fields
 
 
 
-def find_material(sentence,language: str = "ru") -> dict:
+
+
+
+
+def find_material(sentence,language: str = "ru") -> list[dict]:
     """
     Функция для поиска сущности Material
     """
-    
+    all_material = []
     for token in sentence:
         lemma = token.lemma_.lower()
         if lemma in dictionary[language]:
@@ -135,19 +125,22 @@ def find_material(sentence,language: str = "ru") -> dict:
                 "id": str(uuid.uuid4()),
             "name_ru" : lemma if language == "ru" else None,
             "name_en": lemma if language == "en" else None,
-            "synonyms": []
+            "synonyms": [],
+            "_token_idx": token.i
             }
 
             if dictionary[language][lemma]["synonyms"]:
                 new_material["synonyms"] = dictionary[language][lemma]["synonyms"]
             else:
                 new_material["synonyms"] = None
-            return new_material
-    return None
+            all_material.append(new_material)
+ 
+    return all_material
 
 
-def find_process(sentence, language: str = "ru") -> dict:
 
+def find_process(sentence, language: str = "ru") -> list:
+    all_process = []
     for token in sentence:
         lemma = token.lemma_.lower()
         if lemma in dictionary[language]:
@@ -155,7 +148,8 @@ def find_process(sentence, language: str = "ru") -> dict:
                 "id": str(uuid.uuid4()),
                 "name_ru": lemma if language == "ru" else None,
                 "name_en": lemma if language == "en" else None,
-                "synonyms": []
+                "synonyms": [],
+                "_token_idx": token.i
             }
 
             if dictionary[language][lemma]["synonyms"]:
@@ -163,23 +157,32 @@ def find_process(sentence, language: str = "ru") -> dict:
             else:
                 new_process["synonyms"] = None
                 
-            return new_process
+            all_process.append(new_process)
             
-    return None
+
+    return all_process
+
 
 
 def find_equipment(sentence, language: str = "ru") -> dict:
+    all_equipment = []
     for token in sentence:
         lemma = token.lemma_.lower()
         if lemma in dictionary[language]:
             new_equipment = {
                 "id": str(uuid.uuid4()),
                 "name_ru": lemma if language == "ru" else None,
-                "name_en": lemma if language == "en" else None
+                "name_en": lemma if language == "en" else None,
+                "_token_idx": token.i
             }
-            return new_equipment
+            all_equipment.append(new_equipment)
             
-    return None
+    return all_equipment
+
+
+
+
+
 
 def find_publication(text: str) -> dict:
     year_match = re.search(r"\b(19\d{2}|20[0-2]\d)\b", text)
@@ -243,3 +246,126 @@ def find_facilities(sentence) -> list:
             }
             facilities.append(new_facility)
     return facilities
+
+
+def find_all_experiments(sentence) -> list:
+    """
+    Ищет упоминания протоколов и опытов в предложении, 
+    пытается вытащить их номер и дату.
+    """
+    found_experiments = []
+    text = sentence.text
+    
+
+    protocol_pattern = r'(?i)\b(?:протокол|опыт|эксперимент)[а-я]{0,3}\s*(?:(?:№|номер)\s*([A-Za-z0-9А-Яа-я\-/_]+]*)|\s+((?![а-яё]+о\b)[A-Za-z0-9А-Яа-я\-/_]*\d[A-Za-z0-9А-Яа-я\-/_]*))'
+    
+
+    date_pattern = r'\b(\d{2}[./-]\d{2}[./-]\d{2,4}|\d{4}[./-]\d{2}[./-]\d{2})\b'
+    
+    for match in re.finditer(protocol_pattern, text):
+        protocol_number = match.group(1)
+        
+
+        date_match = re.search(date_pattern, text)
+        date_val = date_match.group(1) if date_match else None
+        
+        # Берем индекс корневого слова для связи
+        # (в данном случае индекс начала совпадения в символах или токенах)
+        token_idx = sentence[0].i 
+        for token in sentence:
+            if token.text in match.group(0):
+                token_idx = token.i
+                break
+
+        found_experiments.append({
+            "id": str(uuid.uuid4()),
+            "protocol_number": protocol_number.strip(),
+            "date": date_val,
+            "_token_idx": token_idx
+        })
+        
+    return found_experiments
+
+
+
+def extract_parameter_name(ent) -> str:
+    """
+    Умное извлечение физического параметра для численного значения.
+    Использует комбинацию синтаксического анализа и левого контекстного окна.
+    """
+    # 1. Список "пустых" структурных слов, которые не могут быть параметрами
+    structural_words = {
+        "уровень", "значение", "величина", "предел", "количество", 
+        "содержание", "концентрация", "диапазон", "норма", "показатель"
+    }
+    
+    # Глаголы-мусорщики, которые часто прилипают как параметры
+    bad_verbs = {"превышать", "составлять", "равняться", "находиться", "быть", "равен", "равна"}
+
+    param_token = None
+    curr = ent.root.head  # Родительский токен для нашего числа
+
+
+    if curr.pos_ in ["VERB", "AUX", "ADJ"]:
+        for child in curr.children:
+            if child.dep_ in ["nsubj", "nsubj:pass"] and child.pos_ == "NOUN":
+                param_token = child
+                break
+
+
+    if curr.pos_ == "NOUN" and curr.lemma_.lower() in structural_words:
+
+        verb = curr.head
+        if verb.pos_ in ["VERB", "AUX", "ADJ"]:
+            for child in verb.children:
+                if child.dep_ in ["nsubj", "nsubj:pass"] and child.pos_ == "NOUN":
+                    param_token = child
+                    break
+
+
+    if not param_token or param_token.lemma_.lower() in {"уровень", "предел", "значение"}:
+        context_tokens = []
+        start_idx = ent.start
+        
+
+        for j in range(start_idx - 1, max(-1, start_idx - 6), -1):
+            t = ent.doc[j]
+            
+
+            if t.is_punct or t.pos_ in ["CCONJ", "SCONJ"]:
+                break
+                
+            # Собираем только смысловые части речи (существительные, прилагательные, предлоги)
+            if t.pos_ in ["NOUN", "ADJ", "ADP"]:
+                context_tokens.insert(0, t)
+            elif t.pos_ in ["VERB"] and context_tokens:
+                # Если уперлись в глагол, но до этого уже что-то собрали — стоп
+                break
+
+        if context_tokens:
+            # Очищаем собранный контекст от глаголов-мусорщиков и предлогов на краях
+            words = [
+                t.text for t in context_tokens 
+                if t.lemma_.lower() not in bad_verbs and t.pos_ != "ADP"
+            ]
+            if words:
+                return " ".join(words).strip()
+
+
+    if param_token:
+        tokens_to_collect = [param_token]
+
+        for child in param_token.children:
+            if child.dep_ in ["amod", "nmod"] and child.pos_ in ["ADJ", "NOUN"]:
+                tokens_to_collect.append(child)
+                # Уходим на один уровень глубже для цепочек (концентрация меди "в растворе")
+                for sub_child in child.children:
+                    if sub_child.dep_ == "nmod" and sub_child.pos_ == "NOUN":
+                        tokens_to_collect.append(sub_child)
+        
+        # Сортируем токены по их реальному индексу в тексте, чтобы не ломать порядок слов
+        tokens_to_collect.sort(key=lambda t: t.i)
+        return " ".join([t.text for t in tokens_to_collect]).strip()
+
+
+    return "Параметр"

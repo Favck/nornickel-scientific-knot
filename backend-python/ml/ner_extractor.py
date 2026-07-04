@@ -1,8 +1,9 @@
 import spacy
 import uuid
+from spacy.tokens import Span
 from spacy.pipeline import EntityRuler
 from .constants import  patterns
-from .utils import detector, find_equipment, find_experts, find_material, find_facilities, find_process, find_publication, create_property
+from .utils import detector, find_equipment, find_experts, find_material, find_facilities, find_process, find_publication, create_property, find_all_experiments
 
 
 
@@ -31,7 +32,7 @@ class NerPipeline():
         result = {
             "nodes": {
                 "Material": [], "Process": [], "Equipment": [], 
-                "Property": [], "Publication": [], "Expert": [], "Facility": []
+                "Property": [],"Experiment":[], "Publication": [], "Expert": [], "Facility": []
             },
             "relationships": []
         }
@@ -44,55 +45,125 @@ class NerPipeline():
 
         for sentence in doc.sents:
             
-            # Словарные термины
-            mat = find_material(sentence, language)
-            if mat: result["nodes"]["Material"].append(mat)
-                
-            proc = find_process(sentence, language)
-            if proc: result["nodes"]["Process"].append(proc)
-                
-            equip = find_equipment(sentence, language)
-            if equip: result["nodes"]["Equipment"].append(equip)
+            materials = find_material(sentence, language)
+            processes = find_process(sentence, language)
+            equipments = find_equipment(sentence, language)
+            experiments = find_all_experiments(sentence)
 
-            # Числа, люди и заводы из ents
-            for ent in sentence.ents:
-                prop = None
+            properties = []
+            experts = []
+            facilities = []
+            
+           
+            raw_ents = list(sentence.ents)
+            merged_ents = []
+            i = 0
+            
+            while i < len(raw_ents):
+                current_ent = raw_ents[i]
+                if current_ent.label_ == "PER":
+                    while (i + 1 < len(raw_ents) and 
+                           raw_ents[i + 1].label_ == "PER" and 
+                           raw_ents[i + 1].start - current_ent.end <= 1):
+                        next_ent = raw_ents[i + 1]
+                        
+                        current_ent = Span(doc, current_ent.start, next_ent.end, label="PER")
+                        i += 1  
+                merged_ents.append(current_ent)
+                i += 1
+
+
+
+
+            for ent in merged_ents:
                 if ent.label_ in ["VALUE_RANGE", "VALUE_LIMIT", "VALUE_EXACT"]:
-                    prop = create_property(ent) # Твоя функция
-                    if prop: result["nodes"]["Property"].append(prop)
+                    prop = create_property(ent)  
+                    if prop: 
+                        prop["_token_idx"] = ent.root.i
+                        properties.append(prop)
                     
                 elif ent.label_ == "PER":
-                    result["nodes"]["Expert"].append({
-                        "id": str(uuid.uuid4()), "full_name": ent.text
-                    })
                     
+                    expert ={
+                        "id": str(uuid.uuid4()),
+                        "full_name": ent.text.strip(" ()\"'-"),
+                        "organization": ent.root.head.text.strip(" ()\"'-") if ent.root.head.ent_type_ == "ORG" else None,
+                        "_token_idx":ent.root.i
+                    }
+                    experts.append(expert)
+
+
                 elif ent.label_ == "ORG":
-                    result["nodes"]["Facility"].append({
-                        "id": str(uuid.uuid4()), "name_ru": ent.text
+                    text_lower = ent.text.lower()
+                    russian_keywords = ["рф", "россия", "нии", "гмк", "оао", "ооо", "завод", "фабрика", "институт"]
+                    geography = "Россия" if any(word in text_lower for word in russian_keywords) else "Зарубежье"
+                    
+                    facility = {
+                        "id": str(uuid.uuid4()), 
+                        "name_ru": ent.text.strip(" ()\"'-"),
+                        "geography": geography,
+                        "_token_idx": ent.root.i
+                    }
+                    facilities.append(facility)    
+
+            if processes and materials:
+                for mat in materials:
+                    closest_proc = min(processes, key=lambda p: abs(p["_token_idx"] - mat["_token_idx"]))
+                    result["relationships"].append({
+                        "type":"uses_material",
+                        "source": closest_proc["id"],
+                        "target": mat["id"]
                     })
 
-                if proc and prop: 
+            if processes and properties:
+                for prop in properties:
+                    closest_proc = min(processes, key=lambda p: abs(p["_token_idx"] - prop["_token_idx"]))
                     result["relationships"].append({
                         "type": "operates_at_condition",
-                        "source": proc["id"],
+                        "source": closest_proc["id"],
                         "target": prop["id"]
-                    })
-                
-                if pub and prop:
+                })
+
+            if pub and properties:
+                for prop in properties:
                     result["relationships"].append({
                         "type": "described_in",
                         "source": prop["id"], 
                         "target": pub["id"]
                     })
+            
+            # Связь эксперта и фабрики если они рядом
+            if experts and facilities:
+                for exp in experts:
+                    closest_fac = min(facilities, key=lambda f: abs(f["_token_idx"] - exp["_token_idx"]))
+                    # Если они в пределах, например, 5 слов друг от друга
+                    if abs(exp["_token_idx"] - closest_fac["_token_idx"]) < 5:
+                        result["relationships"].append({
+                            "type": "works_at",
+                            "source": exp["id"],
+                            "target": closest_fac["id"]
+                        })
 
-            if proc and mat:
-                result["relationships"].append({
-                    "type": "uses_material",
-                    "source": proc["id"],
-                    "target": mat["id"]
-                })
+            if processes and experiments:
+                for proc in processes:
+                    closest_exp = min(experiments, key=lambda e: abs(e["_token_idx"] - proc["_token_idx"]))
+                    result["relationships"].append({
+                        "type": "executed_in_experiment",
+                        "source": proc["id"],
+                        "target": closest_exp["id"]
+                    })
 
+            for nodes_list in [materials, processes, equipments, properties, experts, facilities, experiments]:
+                for node in nodes_list:
+                    node.pop("_token_idx", None)
 
+            result["nodes"]["Material"].extend(materials)
+            result["nodes"]["Process"].extend(processes)
+            result["nodes"]["Equipment"].extend(equipments)
+            result["nodes"]["Property"].extend(properties)
+            result["nodes"]["Expert"].extend(experts)
+            result["nodes"]["Facility"].extend(facilities)
+            result["nodes"]["Experiment"].extend(experiments)
 
         return result
 
